@@ -1,0 +1,117 @@
+{
+  "info": {
+    "name": "Campus Lost and Found API",
+    "description": "End-to-end checks for registration, matching, found-item ownership, and the CLAIMED -> RETURNED rule. Configure adminEmail/adminPassword before running the full collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080/api" },
+    { "key": "adminEmail", "value": "" },
+    { "key": "adminPassword", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Register staff",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('staff account created', () => pm.response.to.have.status(201));",
+        "const body = pm.response.json(); pm.collectionVariables.set('staffToken', body.token); pm.collectionVariables.set('staffId', body.userId); pm.collectionVariables.set('staffEmail', body.email);"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"staff-{{$timestamp}}@campus.test\",\n  \"password\": \"StaffTestPassword1!\",\n  \"name\": \"Test Staff\",\n  \"role\": \"STAFF\"\n}" }, "url": "{{baseUrl}}/auth/register" }
+    },
+    {
+      "name": "1a. Login as staff",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('staff login succeeds', () => pm.response.to.have.status(200)); pm.collectionVariables.set('staffToken', pm.response.json().token);"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"StaffTestPassword1!\"\n}" }, "url": "{{baseUrl}}/auth/login" }
+    },
+    {
+      "name": "2. Register student",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('student account created', () => pm.response.to.have.status(201));",
+        "const body = pm.response.json(); pm.collectionVariables.set('studentToken', body.token); pm.collectionVariables.set('studentId', body.userId); pm.collectionVariables.set('studentEmail', body.email);"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"student-{{$timestamp}}@campus.test\",\n  \"password\": \"StudentTestPassword1!\",\n  \"name\": \"Test Student\",\n  \"role\": \"STUDENT\"\n}" }, "url": "{{baseUrl}}/auth/register" }
+    },
+    {
+      "name": "2a. Login as student",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('student login succeeds', () => pm.response.to.have.status(200)); pm.collectionVariables.set('studentToken', pm.response.json().token);"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": \"StudentTestPassword1!\"\n}" }, "url": "{{baseUrl}}/auth/login" }
+    },
+    {
+      "name": "3. Find Electronics category",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('categories loaded', () => pm.response.to.have.status(200));",
+        "const category = pm.response.json().find(item => item.name === 'Electronics'); pm.expect(category).to.exist; pm.collectionVariables.set('categoryId', category.id);"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }], "url": "{{baseUrl}}/categories" }
+    },
+    {
+      "name": "4. Submit lost report",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('lost report created', () => pm.response.to.have.status(201)); pm.collectionVariables.set('reportId', pm.response.json().id);"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"categoryId\": {{categoryId}},\n  \"description\": \"black USB charger with braided cable\",\n  \"location\": \"Library study area\"\n}" }, "url": "{{baseUrl}}/lost-reports" }
+    },
+    {
+      "name": "5. Log found item",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('found item created as AVAILABLE', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().status).to.eql('AVAILABLE'); }); pm.collectionVariables.set('foundItemId', pm.response.json().id);"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"categoryId\": {{categoryId}},\n  \"description\": \"black braided USB charger\",\n  \"location\": \"Library front desk\"\n}" }, "url": "{{baseUrl}}/found-items" }
+    },
+    {
+      "name": "6. Check matching results",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('same-category keyword match is returned', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().some(item => item.id == pm.collectionVariables.get('foundItemId'))).to.be.true; });"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }], "url": "{{baseUrl}}/lost-reports/{{reportId}}/matches" }
+    },
+    {
+      "name": "7. Reject RETURNED before CLAIMED",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('premature return rejected with clear 400', () => { pm.response.to.have.status(400); pm.expect(pm.response.json().message).to.include('CLAIMED'); });"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"status\":\"RETURNED\"}" }, "url": "{{baseUrl}}/found-items/{{foundItemId}}/status" }
+    },
+    {
+      "name": "8. Register second staff member",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('second staff account created', () => pm.response.to.have.status(201)); pm.collectionVariables.set('otherStaffToken', pm.response.json().token);"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"other-staff-{{$timestamp}}@campus.test\",\n  \"password\": \"OtherStaffPassword1!\",\n  \"name\": \"Other Staff\",\n  \"role\": \"STAFF\"\n}" }, "url": "{{baseUrl}}/auth/register" }
+    },
+    {
+      "name": "9. Reject another staff member",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('non-owner gets 403', () => pm.response.to.have.status(403));"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{otherStaffToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"status\":\"CLAIMED\"}" }, "url": "{{baseUrl}}/found-items/{{foundItemId}}/status" }
+    },
+    {
+      "name": "10. Claim found item",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('owner can claim item', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('CLAIMED'); });"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"status\":\"CLAIMED\"}" }, "url": "{{baseUrl}}/found-items/{{foundItemId}}/status" }
+    },
+    {
+      "name": "11. Return claimed item",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('claimed item can be returned', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('RETURNED'); });"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{staffToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\"status\":\"RETURNED\"}" }, "url": "{{baseUrl}}/found-items/{{foundItemId}}/status" }
+    },
+    {
+      "name": "12. Admin dashboard",
+      "event": [{ "listen": "prerequest", "script": { "exec": [
+        "if (!pm.collectionVariables.get('adminToken')) { pm.sendRequest({ url: pm.variables.get('baseUrl') + '/auth/login', method: 'POST', header: { 'Content-Type': 'application/json' }, body: { mode: 'raw', raw: JSON.stringify({ email: pm.variables.get('adminEmail'), password: pm.variables.get('adminPassword') }) } }, (err, res) => { if (err) throw err; if (res.code !== 200) throw new Error('Admin login failed; set valid adminEmail/adminPassword.'); pm.collectionVariables.set('adminToken', res.json().token); }); }"
+      ], "type": "text/javascript" } }, { "listen": "test", "script": { "exec": [
+        "pm.test('admin sees dashboard counts', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.have.property('pendingReports'); pm.expect(pm.response.json()).to.have.property('matchedPairs'); pm.expect(pm.response.json()).to.have.property('returnedItems'); });"
+      ], "type": "text/javascript" } }],
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/admin/dashboard" }
+    }
+  ]
+}

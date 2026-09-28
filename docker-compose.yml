@@ -1,0 +1,14 @@
+services:
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lost_found
+      POSTGRES_USER: lost_found
+      POSTGRES_PASSWORD: lost_found
+    ports:
+      - "5432:5432"
+    volumes:
+      - lost-found-postgres:/var/lib/postgresql/data
+
+volumes:
+  lost-found-postgres:
